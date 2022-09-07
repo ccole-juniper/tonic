@@ -16,7 +16,13 @@ pub fn generate<T: Service>(
 ) -> TokenStream {
     let service_ident = quote::format_ident!("{}Client", service.name());
     let client_mod = quote::format_ident!("{}_client", naive_snake_case(service.name()));
-    let methods = generate_methods(service, emit_package, proto_path, compile_well_known_types);
+    let methods = generate_methods(
+        service,
+        emit_package,
+        proto_path,
+        compile_well_known_types,
+        attributes,
+    );
 
     let connect = generate_connect(&service_ident);
     let service_doc = generate_doc_comments(service.comment());
@@ -135,6 +141,7 @@ fn generate_methods<T: Service>(
     emit_package: bool,
     proto_path: &str,
     compile_well_known_types: bool,
+    attributes: &Attributes,
 ) -> TokenStream {
     let mut stream = TokenStream::new();
     let package = if emit_package { service.package() } else { "" };
@@ -148,17 +155,52 @@ fn generate_methods<T: Service>(
             method.identifier()
         );
 
+        let codec_method = format!(
+            "{}{}{}.{}",
+            service.package(),
+            if service.package().is_empty() {
+                ""
+            } else {
+                "."
+            },
+            service.identifier(),
+            method.identifier()
+        );
+        let codec_path = attributes.for_codec(&codec_method);
+
         stream.extend(generate_doc_comments(method.comment()));
 
         let method = match (method.client_streaming(), method.server_streaming()) {
-            (false, false) => generate_unary(method, proto_path, compile_well_known_types, path),
-            (false, true) => {
-                generate_server_streaming(method, proto_path, compile_well_known_types, path)
-            }
-            (true, false) => {
-                generate_client_streaming(method, proto_path, compile_well_known_types, path)
-            }
-            (true, true) => generate_streaming(method, proto_path, compile_well_known_types, path),
+            (false, false) => generate_unary(
+                method,
+                proto_path,
+                compile_well_known_types,
+                path,
+                codec_path,
+            ),
+
+            (false, true) => generate_server_streaming(
+                method,
+                proto_path,
+                compile_well_known_types,
+                path,
+                codec_path,
+            ),
+            (true, false) => generate_client_streaming(
+                method,
+                proto_path,
+                compile_well_known_types,
+                path,
+                codec_path,
+            ),
+
+            (true, true) => generate_streaming(
+                method,
+                proto_path,
+                compile_well_known_types,
+                path,
+                codec_path,
+            ),
         };
 
         stream.extend(method);
@@ -172,8 +214,10 @@ fn generate_unary<T: Method>(
     proto_path: &str,
     compile_well_known_types: bool,
     path: String,
+    codec_name: Option<syn::Path>,
 ) -> TokenStream {
-    let codec_name = syn::parse_str::<syn::Path>(method.codec_path()).unwrap();
+    let codec_name =
+        codec_name.unwrap_or_else(|| syn::parse_str::<syn::Path>(method.codec_path()).unwrap());
     let ident = format_ident!("{}", method.name());
     let (request, response) = method.request_response_name(proto_path, compile_well_known_types);
 
@@ -197,8 +241,10 @@ fn generate_server_streaming<T: Method>(
     proto_path: &str,
     compile_well_known_types: bool,
     path: String,
+    codec_name: Option<syn::Path>,
 ) -> TokenStream {
-    let codec_name = syn::parse_str::<syn::Path>(method.codec_path()).unwrap();
+    let codec_name =
+        codec_name.unwrap_or_else(|| syn::parse_str::<syn::Path>(method.codec_path()).unwrap());
     let ident = format_ident!("{}", method.name());
 
     let (request, response) = method.request_response_name(proto_path, compile_well_known_types);
@@ -223,8 +269,10 @@ fn generate_client_streaming<T: Method>(
     proto_path: &str,
     compile_well_known_types: bool,
     path: String,
+    codec_name: Option<syn::Path>,
 ) -> TokenStream {
-    let codec_name = syn::parse_str::<syn::Path>(method.codec_path()).unwrap();
+    let codec_name =
+        codec_name.unwrap_or_else(|| syn::parse_str::<syn::Path>(method.codec_path()).unwrap());
     let ident = format_ident!("{}", method.name());
 
     let (request, response) = method.request_response_name(proto_path, compile_well_known_types);
@@ -249,8 +297,10 @@ fn generate_streaming<T: Method>(
     proto_path: &str,
     compile_well_known_types: bool,
     path: String,
+    codec_name: Option<syn::Path>,
 ) -> TokenStream {
-    let codec_name = syn::parse_str::<syn::Path>(method.codec_path()).unwrap();
+    let codec_name =
+        codec_name.unwrap_or_else(|| syn::parse_str::<syn::Path>(method.codec_path()).unwrap());
     let ident = format_ident!("{}", method.name());
 
     let (request, response) = method.request_response_name(proto_path, compile_well_known_types);

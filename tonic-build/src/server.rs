@@ -15,7 +15,7 @@ pub fn generate<T: Service>(
     compile_well_known_types: bool,
     attributes: &Attributes,
 ) -> TokenStream {
-    let methods = generate_methods(service, proto_path, compile_well_known_types);
+    let methods = generate_methods(service, proto_path, compile_well_known_types, attributes);
 
     let server_service = quote::format_ident!("{}Server", service.name());
     let server_trait = quote::format_ident!("{}", service.name());
@@ -274,6 +274,7 @@ fn generate_methods<T: Service>(
     service: &T,
     proto_path: &str,
     compile_well_known_types: bool,
+    attributes: &Attributes,
 ) -> TokenStream {
     let mut stream = TokenStream::new();
 
@@ -293,6 +294,19 @@ fn generate_methods<T: Service>(
         let ident = quote::format_ident!("{}", method.name());
         let server_trait = quote::format_ident!("{}", service.name());
 
+        let codec_method = format!(
+            "{}{}{}.{}",
+            service.package(),
+            if service.package().is_empty() {
+                ""
+            } else {
+                "."
+            },
+            service.identifier(),
+            method.identifier()
+        );
+        let codec_path = attributes.for_codec(&codec_method);
+
         let method_stream = match (method.client_streaming(), method.server_streaming()) {
             (false, false) => generate_unary(
                 method,
@@ -300,6 +314,7 @@ fn generate_methods<T: Service>(
                 compile_well_known_types,
                 ident,
                 server_trait,
+                codec_path,
             ),
 
             (false, true) => generate_server_streaming(
@@ -308,6 +323,7 @@ fn generate_methods<T: Service>(
                 compile_well_known_types,
                 ident.clone(),
                 server_trait,
+                codec_path,
             ),
             (true, false) => generate_client_streaming(
                 method,
@@ -315,6 +331,7 @@ fn generate_methods<T: Service>(
                 compile_well_known_types,
                 ident.clone(),
                 server_trait,
+                codec_path,
             ),
 
             (true, true) => generate_streaming(
@@ -323,6 +340,7 @@ fn generate_methods<T: Service>(
                 compile_well_known_types,
                 ident.clone(),
                 server_trait,
+                codec_path,
             ),
         };
 
@@ -343,8 +361,10 @@ fn generate_unary<T: Method>(
     compile_well_known_types: bool,
     method_ident: Ident,
     server_trait: Ident,
+    codec_name: Option<syn::Path>,
 ) -> TokenStream {
-    let codec_name = syn::parse_str::<syn::Path>(method.codec_path()).unwrap();
+    let codec_name =
+        codec_name.unwrap_or_else(|| syn::parse_str::<syn::Path>(method.codec_path()).unwrap());
 
     let service_ident = quote::format_ident!("{}Svc", method.identifier());
 
@@ -392,8 +412,10 @@ fn generate_server_streaming<T: Method>(
     compile_well_known_types: bool,
     method_ident: Ident,
     server_trait: Ident,
+    codec_name: Option<syn::Path>,
 ) -> TokenStream {
-    let codec_name = syn::parse_str::<syn::Path>(method.codec_path()).unwrap();
+    let codec_name =
+        codec_name.unwrap_or_else(|| syn::parse_str::<syn::Path>(method.codec_path()).unwrap());
 
     let service_ident = quote::format_ident!("{}Svc", method.identifier());
 
@@ -444,11 +466,13 @@ fn generate_client_streaming<T: Method>(
     compile_well_known_types: bool,
     method_ident: Ident,
     server_trait: Ident,
+    codec_name: Option<syn::Path>,
 ) -> TokenStream {
     let service_ident = quote::format_ident!("{}Svc", method.identifier());
 
     let (request, response) = method.request_response_name(proto_path, compile_well_known_types);
-    let codec_name = syn::parse_str::<syn::Path>(method.codec_path()).unwrap();
+    let codec_name =
+        codec_name.unwrap_or_else(|| syn::parse_str::<syn::Path>(method.codec_path()).unwrap());
 
     quote! {
         #[allow(non_camel_case_types)]
@@ -494,8 +518,10 @@ fn generate_streaming<T: Method>(
     compile_well_known_types: bool,
     method_ident: Ident,
     server_trait: Ident,
+    codec_name: Option<syn::Path>,
 ) -> TokenStream {
-    let codec_name = syn::parse_str::<syn::Path>(method.codec_path()).unwrap();
+    let codec_name =
+        codec_name.unwrap_or_else(|| syn::parse_str::<syn::Path>(method.codec_path()).unwrap());
 
     let service_ident = quote::format_ident!("{}Svc", method.identifier());
 

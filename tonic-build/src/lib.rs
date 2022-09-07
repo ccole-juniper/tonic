@@ -141,13 +141,15 @@ pub trait Method {
     ) -> (TokenStream, TokenStream);
 }
 
-/// Attributes that will be added to `mod` and `struct` items.
+/// Attributes that will be added to `mod`, `struct`, and `method` items.
 #[derive(Debug, Default, Clone)]
 pub struct Attributes {
     /// `mod` attributes.
     module: Vec<(String, String)>,
     /// `struct` attributes.
     structure: Vec<(String, String)>,
+    /// custom per-method codec override
+    codec: Vec<(String, String)>,
 }
 
 impl Attributes {
@@ -157,6 +159,20 @@ impl Attributes {
 
     fn for_struct(&self, name: &str) -> Vec<syn::Attribute> {
         generate_attributes(name, &self.structure)
+    }
+
+    fn for_codec(&self, name: &str) -> Option<syn::Path> {
+        let mut attributes: Vec<syn::Path> = self
+            .codec
+            .iter()
+            .filter(|(matcher, _)| match_name(matcher, name))
+            .flat_map(|(_, attr)| syn::parse_str::<syn::Path>(attr.as_str()))
+            .collect::<Vec<_>>();
+        assert!(
+            attributes.len() <= 1,
+            "there may only be at most one custom codec per method"
+        );
+        attributes.pop()
     }
 
     /// Add an attribute that will be added to `mod` items matching the given pattern.
@@ -183,6 +199,20 @@ impl Attributes {
     /// ```
     pub fn push_struct(&mut self, pattern: impl Into<String>, attr: impl Into<String>) {
         self.structure.push((pattern.into(), attr.into()));
+    }
+
+    /// Add a codec override that will be used with the `method` matching the given pattern.
+    /// This should be a type which implements the [Codec](https://docs.rs/tonic/*/tonic/codec/trait.Codec.html) trait.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tonic_build::*;
+    /// let mut attributes = Attributes::default();
+    /// attributes.push_codec("my.proto.package.method", "My::Custom::Codec");
+    /// ```
+    pub fn push_codec(&mut self, pattern: impl Into<String>, attr: impl Into<String>) {
+        self.codec.push((pattern.into(), attr.into()));
     }
 }
 

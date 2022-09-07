@@ -300,6 +300,17 @@ impl Builder {
         self
     }
 
+    /// Override the codec generated for the matched server method. Matches on the method name.
+    pub fn server_codec_path<P: AsRef<str>, A: AsRef<str>>(
+        mut self,
+        path: P,
+        attribute: A,
+    ) -> Self {
+        self.server_attributes
+            .push_codec(path.as_ref().to_string(), attribute.as_ref().to_string());
+        self
+    }
+
     /// Add additional attribute to matched service servers. Matches on the service name.
     pub fn server_attribute<P: AsRef<str>, A: AsRef<str>>(mut self, path: P, attribute: A) -> Self {
         self.server_attributes
@@ -315,6 +326,17 @@ impl Builder {
     ) -> Self {
         self.client_attributes
             .push_mod(path.as_ref().to_string(), attribute.as_ref().to_string());
+        self
+    }
+
+    /// Override the codec generated for the matched client method. Matches on the method name.
+    pub fn client_codec_path<P: AsRef<str>, A: AsRef<str>>(
+        mut self,
+        path: P,
+        attribute: A,
+    ) -> Self {
+        self.client_attributes
+            .push_codec(path.as_ref().to_string(), attribute.as_ref().to_string());
         self
     }
 
